@@ -1,3 +1,5 @@
+from functools import wraps
+
 from django.db import models
 from django.utils.timezone import now
 from django.utils.dateparse import parse_datetime
@@ -31,18 +33,20 @@ def field_values(instance: models.Model, include_pk=True) -> dict:
 def find_change_type(instance: models.Model):
     pk_name = instance._meta.pk.name
     pk = getattr(instance, pk_name)
-    change_type = OperationType.SAVE
     if pk is None:
-        change_type = OperationType.INSERT
-    else:
-        old_instance = instance.__class__.objects.get(**{pk_name:pk})
-        current_values = field_values(old_instance, False)
-        new_values = field_values(instance, False)
-        if current_values != new_values:
-            change_type = OperationType.UPDATE
-    return change_type
+        return OperationType.INSERT
 
-from functools import wraps
+    model = instance.__class__
+    try:
+        old_instance = model.objects.get(**{pk_name:pk})
+    except model.DoesNotExist:
+        return OperationType.INSERT
+
+    current_values = field_values(old_instance, False)
+    new_values = field_values(instance, False)
+    if current_values != new_values:
+        return OperationType.UPDATE
+    return OperationType.SAVE
 
 def with_history(history_model, fk_field=None, now_field=None, operation_field=None, valid_from_field=None, valid_until_field=None):
     def decorator(save):
